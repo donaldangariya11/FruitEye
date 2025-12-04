@@ -49,7 +49,7 @@ def process_with_model(img):
         model = get_model()  # Lazy load
         
         # Run YOLO on CPU
-        results = model.predict(source=img, conf=0.01, imgsz=1280, device='cpu', save=False)
+        results = model.predict(source=img, conf=0.01, imgsz=640, device='cpu', save=False)
 
         # Annotated image with bounding boxes
         annotated_img = results[0].plot()
