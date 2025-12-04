@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from io import BytesIO
 from pathlib import Path
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -53,9 +54,18 @@ def process_with_model(img):
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 1.5
         thickness = 3
-        color = (0, 255, 0)
+        color = (255, 255, 255)  # white color
+        
         # Place text at top-left corner
-        annotated_img = cv2.putText(annotated_img, text, (30, 50), font, font_scale, color, thickness)
+        annotated_img = cv2.putText(
+            annotated_img,
+            text,
+            (30, 50),
+            font,
+            font_scale,
+            color,
+            thickness
+        )
 
         # Extract detections for JSON
         detections = []
@@ -63,21 +73,11 @@ def process_with_model(img):
             x1, y1, x2, y2, conf, cls = r
             detections.append({
                 "x1": x1, "y1": y1,
-                "x2": x2,
-                "y2": y2,
+                "x2": x2, "y2": y2,
                 "confidence": conf,
                 "class": int(cls),
                 "label": model.names[int(cls)]
             })
-        annotated_img = cv2.putText(
-            annotated_img,
-            f"Total Mangoes: {mango_count}",
-            (30, 100),  # x, y position
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.5,  # font scale
-            (255, 255, 255),  # green color
-            3  # thickness
-        )
 
         return annotated_img, mango_count, detections
 
@@ -89,6 +89,19 @@ def process_with_model(img):
 # ------------------------
 # Flask endpoints
 # ------------------------
+@app.route('/', methods=['GET'])
+def home():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'API is running',
+        'model_loaded': model is not None,
+        'endpoints': {
+            '/detect': 'POST - Returns annotated image',
+            '/predict_json': 'POST - Returns JSON with detections',
+            '/health': 'GET - Health check'
+        }
+    }), 200
+
 @app.route('/detect', methods=['POST'])
 def detect_mango():
     if 'image' not in request.files:
@@ -118,12 +131,13 @@ def detect_mango():
         io_buf = BytesIO(buffer)
         io_buf.seek(0)
 
-        # Return image + mango count as headers (or use JSON endpoint)
+        # Return image + mango count as headers
         response = send_file(io_buf, mimetype='image/jpeg')
         response.headers['X-Mango-Count'] = str(mango_count)
         return response
 
     except Exception as e:
+        print(f"Error in /detect: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/predict_json', methods=['POST'])
@@ -155,11 +169,17 @@ def detect_mango_json():
         })
 
     except Exception as e:
+        print(f"Error in /predict_json: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({'status': 'healthy'}), 200
+    return jsonify({
+        'status': 'healthy',
+        'model_loaded': model is not None
+    }), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Use PORT environment variable provided by Render
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
