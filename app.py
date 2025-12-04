@@ -16,15 +16,21 @@ CORS(app)
 MODEL_PATH = "best.pt"
 model = None
 
-def load_yolo_model():
+def get_model():
+    """Lazy load model on first request"""
     global model
-    if Path(MODEL_PATH).exists():
-        model = YOLO(MODEL_PATH)
-        print("✅ YOLO model loaded successfully!")
-    else:
-        print(f"❌ Model not found at {MODEL_PATH}")
-
-load_yolo_model()
+    if model is None:
+        if Path(MODEL_PATH).exists():
+            try:
+                model = YOLO(MODEL_PATH)
+                print("✅ YOLO model loaded successfully!")
+            except Exception as e:
+                print(f"❌ Error loading model: {e}")
+                raise
+        else:
+            print(f"❌ Model not found at {MODEL_PATH}")
+            raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
+    return model
 
 # ------------------------
 # Process image with YOLO
@@ -36,10 +42,12 @@ def process_with_model(img):
     - mango_count: total number of mangoes detected
     - detections: list of bounding boxes + confidence + label
     """
-    if model is None or img is None:
+    if img is None:
         return img, 0, []
 
     try:
+        model = get_model()  # Lazy load
+        
         # Run YOLO on CPU
         results = model.predict(source=img, conf=0.01, imgsz=1280, device='cpu', save=False)
 
@@ -92,9 +100,16 @@ def process_with_model(img):
 @app.route('/', methods=['GET'])
 def home():
     """Health check endpoint"""
+    model_status = "not loaded"
+    try:
+        get_model()
+        model_status = "loaded"
+    except:
+        model_status = "error loading"
+    
     return jsonify({
         'status': 'API is running',
-        'model_loaded': model is not None,
+        'model_status': model_status,
         'endpoints': {
             '/detect': 'POST - Returns annotated image',
             '/predict_json': 'POST - Returns JSON with detections',
@@ -174,9 +189,15 @@ def detect_mango_json():
 
 @app.route('/health', methods=['GET'])
 def health_check():
+    try:
+        get_model()
+        model_loaded = True
+    except:
+        model_loaded = False
+    
     return jsonify({
         'status': 'healthy',
-        'model_loaded': model is not None
+        'model_loaded': model_loaded
     }), 200
 
 if __name__ == '__main__':
