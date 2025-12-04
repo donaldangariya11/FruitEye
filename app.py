@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 from io import BytesIO
 from pathlib import Path
-import os
 
 app = Flask(__name__)
 CORS(app)
@@ -16,21 +15,15 @@ CORS(app)
 MODEL_PATH = "best.pt"
 model = None
 
-def get_model():
-    """Lazy load model on first request"""
+def load_yolo_model():
     global model
-    if model is None:
-        if Path(MODEL_PATH).exists():
-            try:
-                model = YOLO(MODEL_PATH)
-                print("✅ YOLO model loaded successfully!")
-            except Exception as e:
-                print(f"❌ Error loading model: {e}")
-                raise
-        else:
-            print(f"❌ Model not found at {MODEL_PATH}")
-            raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
-    return model
+    if Path(MODEL_PATH).exists():
+        model = YOLO(MODEL_PATH)
+        print("✅ YOLO model loaded successfully!")
+    else:
+        print(f"❌ Model not found at {MODEL_PATH}")
+
+load_yolo_model()
 
 # ------------------------
 # Process image with YOLO
@@ -42,14 +35,12 @@ def process_with_model(img):
     - mango_count: total number of mangoes detected
     - detections: list of bounding boxes + confidence + label
     """
-    if img is None:
+    if model is None or img is None:
         return img, 0, []
 
     try:
-        model = get_model()  # Lazy load
-        
         # Run YOLO on CPU
-        results = model.predict(source=img, conf=0.01, imgsz=640, device='cpu', save=False)
+        results = model.predict(source=img, conf=0.01, imgsz=1280, device='cpu', save=False)
 
         # Annotated image with bounding boxes
         annotated_img = results[0].plot()
@@ -62,18 +53,9 @@ def process_with_model(img):
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 1.5
         thickness = 3
-        color = (255, 255, 255)  # white color
-        
+        color = (0, 255, 0)
         # Place text at top-left corner
-        annotated_img = cv2.putText(
-            annotated_img,
-            text,
-            (30, 50),
-            font,
-            font_scale,
-            color,
-            thickness
-        )
+        annotated_img = cv2.putText(annotated_img, text, (30, 50), font, font_scale, color, thickness)
 
         # Extract detections for JSON
         detections = []
@@ -81,11 +63,21 @@ def process_with_model(img):
             x1, y1, x2, y2, conf, cls = r
             detections.append({
                 "x1": x1, "y1": y1,
-                "x2": x2, "y2": y2,
+                "x2": x2,
+                "y2": y2,
                 "confidence": conf,
                 "class": int(cls),
                 "label": model.names[int(cls)]
             })
+        annotated_img = cv2.putText(
+            annotated_img,
+            f"Total Mangoes: {mango_count}",
+            (30, 100),  # x, y position
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.5,  # font scale
+            (255, 255, 255),  # green color
+            3  # thickness
+        )
 
         return annotated_img, mango_count, detections
 
@@ -97,26 +89,6 @@ def process_with_model(img):
 # ------------------------
 # Flask endpoints
 # ------------------------
-@app.route('/', methods=['GET'])
-def home():
-    """Health check endpoint"""
-    model_status = "not loaded"
-    try:
-        get_model()
-        model_status = "loaded"
-    except:
-        model_status = "error loading"
-    
-    return jsonify({
-        'status': 'API is running',
-        'model_status': model_status,
-        'endpoints': {
-            '/detect': 'POST - Returns annotated image',
-            '/predict_json': 'POST - Returns JSON with detections',
-            '/health': 'GET - Health check'
-        }
-    }), 200
-
 @app.route('/detect', methods=['POST'])
 def detect_mango():
     if 'image' not in request.files:
@@ -146,13 +118,12 @@ def detect_mango():
         io_buf = BytesIO(buffer)
         io_buf.seek(0)
 
-        # Return image + mango count as headers
+        # Return image + mango count as headers (or use JSON endpoint)
         response = send_file(io_buf, mimetype='image/jpeg')
         response.headers['X-Mango-Count'] = str(mango_count)
         return response
 
     except Exception as e:
-        print(f"Error in /detect: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/predict_json', methods=['POST'])
@@ -184,23 +155,11 @@ def detect_mango_json():
         })
 
     except Exception as e:
-        print(f"Error in /predict_json: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    try:
-        get_model()
-        model_loaded = True
-    except:
-        model_loaded = False
-    
-    return jsonify({
-        'status': 'healthy',
-        'model_loaded': model_loaded
-    }), 200
+    return jsonify({'status': 'healthy'}), 200
 
 if __name__ == '__main__':
-    # Use PORT environment variable provided by Render
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=True)
