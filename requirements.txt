@@ -1,16 +1,14 @@
 pip>=24
 setuptools>=70
 wheel
-
 Flask==3.0.0
 flask-cors==4.0.0
 opencv-python==4.8.1.78
 numpy==1.26.4
 Pillow==10.1.0
+
+# YOLO/Ultralytics (automatically installs compatible PyTorch)
 ultralytics==8.2.0
 
-# PyTorch with Python 3.12 support
-torch==2.2.2
-torchvision==0.17.2
-
 gunicorn==21.2.0
+
