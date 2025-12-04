@@ -12,7 +12,7 @@ CORS(app)
 # ------------------------
 # Load YOLO model
 # ------------------------
-MODEL_PATH = "C:/Users/Donal/runs/detect/train/weights/best.pt"
+MODEL_PATH = "best.pt"
 model = None
 
 def load_yolo_model():
